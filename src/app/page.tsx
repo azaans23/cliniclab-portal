@@ -17,16 +17,33 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError("");
+
+    // Fixed credentials
+    const validCredentials = {
+      email: "admin@cliniclab.com",
+      password: "admin123",
+    };
 
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    console.log("Sign in attempt:", { email, password });
-    setIsLoading(false);
+    if (
+      email === validCredentials.email &&
+      password === validCredentials.password
+    ) {
+      console.log("Login successful!");
+      // Redirect to dashboard (you can replace this with actual routing)
+      window.location.href = "/dashboard";
+    } else {
+      setError("Invalid email or password");
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -59,7 +76,7 @@ export default function Home() {
             </h1>
           </div>
           <p className="text-neutral-400 text-base font-normal">
-            Access your laboratory management system
+            Access your Virtual AI Receptionist Portal
           </p>
         </div>
 
@@ -75,6 +92,12 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-5">
+              {error && (
+                <div className="text-red-400 text-sm text-center font-medium bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                  {error}
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label
                   htmlFor="email"
