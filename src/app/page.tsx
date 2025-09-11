@@ -147,7 +147,7 @@ export default function Home() {
 
             <div className="mt-6 text-center">
               <p className="text-sm text-neutral-400 font-normal">
-                Don't have an account?{" "}
+                Don&apos;t have an account?{" "}
                 <a
                   href="#"
                   className="text-indigo-500 hover:text-indigo-400 font-semibold transition-colors"
