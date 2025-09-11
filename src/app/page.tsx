@@ -12,36 +12,43 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Image from "next/image";
+import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
 
-    // Fixed credentials
-    const validCredentials = {
-      email: "admin@cliniclab.com",
-      password: "admin123",
-    };
+    try {
+      // Query the client_login table for authentication
+      const { data, error: queryError } = await supabase
+        .from("client_login")
+        .select("*")
+        .eq("email", email)
+        .eq("password", password)
+        .single();
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (queryError || !data) {
+        setError("Invalid email or password");
+        setIsLoading(false);
+        return;
+      }
 
-    if (
-      email === validCredentials.email &&
-      password === validCredentials.password
-    ) {
+      // Store user data in localStorage for session management
+      localStorage.setItem("user", JSON.stringify(data));
+
       console.log("Login successful!");
-      // Redirect to dashboard (you can replace this with actual routing)
-      window.location.href = "/dashboard";
-    } else {
-      setError("Invalid email or password");
+      router.push("/dashboard");
+    } catch (err) {
+      setError("An error occurred during login");
       setIsLoading(false);
     }
   };
