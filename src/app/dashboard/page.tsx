@@ -9,7 +9,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { supabase, MessagesTaken } from "@/lib/supabase";
+import {
+  supabase,
+  MessagesTaken,
+  RetellCall,
+  RetellConfig,
+} from "@/lib/supabase";
 import Link from "next/link";
 
 // Dummy data
@@ -50,15 +55,158 @@ const SkeletonTable = () => (
   </div>
 );
 
+// Helper functions for calls
+const getCallerName = (call: RetellCall) => {
+  if (
+    call.collected_dynamic_variables?.firstName &&
+    call.collected_dynamic_variables?.lastName
+  ) {
+    return `${call.collected_dynamic_variables.firstName} ${call.collected_dynamic_variables.lastName}`;
+  }
+  return "Unknown Caller";
+};
+
+const getPhoneNumber = (call: RetellCall) => {
+  if (call.direction === "inbound") {
+    return call.from_number || "Unknown";
+  } else {
+    return call.to_number || "Unknown";
+  }
+};
+
+const formatDuration = (durationMs?: number) => {
+  if (!durationMs) return "0:00";
+  const seconds = Math.floor(durationMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+};
+
+const formatCallDate = (timestamp?: number) => {
+  if (!timestamp) return "Unknown";
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffInHours = Math.floor(
+    (now.getTime() - date.getTime()) / (1000 * 60 * 60)
+  );
+
+  if (diffInHours < 1) {
+    return "Just now";
+  } else if (diffInHours < 24) {
+    return `${diffInHours} hours ago`;
+  } else if (diffInHours < 48) {
+    return "Yesterday";
+  } else {
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+};
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case "ended":
+      return "text-green-400";
+    case "ongoing":
+      return "text-blue-400";
+    case "error":
+      return "text-red-400";
+    default:
+      return "text-neutral-400";
+  }
+};
+
 export default function Dashboard() {
   const [recentMessages, setRecentMessages] = useState<MessageWithDetails[]>(
     []
   );
   const [messagesLoading, setMessagesLoading] = useState(true);
+  const [recentCalls, setRecentCalls] = useState<RetellCall[]>([]);
+  const [callsLoading, setCallsLoading] = useState(true);
+  const [retellConfig, setRetellConfig] = useState<RetellConfig | null>(null);
 
   useEffect(() => {
+    fetchRetellConfig();
     fetchRecentMessages();
   }, []);
+
+  useEffect(() => {
+    if (retellConfig) {
+      fetchRecentCalls();
+    }
+  }, [retellConfig]);
+
+  const fetchRetellConfig = async () => {
+    try {
+      const userData = localStorage.getItem("user");
+      if (!userData) return;
+
+      const user = JSON.parse(userData);
+
+      const { data, error } = await supabase
+        .from("retell_config")
+        .select("*")
+        .eq("client_id", user.id)
+        .single();
+
+      if (error) {
+        console.error("Error fetching retell config:", error);
+        return;
+      }
+
+      setRetellConfig(data);
+    } catch (error) {
+      console.error("Error:", error);
+    }
+  };
+
+  const fetchRecentCalls = async () => {
+    if (!retellConfig) return;
+
+    setCallsLoading(true);
+    try {
+      const agentId = retellConfig.inbound_agent_id;
+
+      if (!agentId) {
+        console.error("No inbound agent ID found");
+        setCallsLoading(false);
+        return;
+      }
+
+      const requestBody = {
+        sort_order: "descending",
+        limit: 3,
+        filter_criteria: {
+          agent_id: [agentId],
+          call_type: ["phone_call"],
+          direction: ["inbound"],
+        },
+      };
+
+      const response = await fetch("https://api.retellai.com/v2/list-calls", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${retellConfig.retell_api}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setRecentCalls(data || []);
+    } catch (error) {
+      console.error("Error fetching recent calls:", error);
+    } finally {
+      setCallsLoading(false);
+    }
+  };
 
   const fetchRecentMessages = async () => {
     try {
@@ -287,10 +435,74 @@ export default function Dashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <SkeletonTable />
-            <Button className="w-full mt-4 bg-sky-500 hover:bg-sky-600 text-white">
-              View All Calls
-            </Button>
+            {callsLoading ? (
+              <SkeletonTable />
+            ) : recentCalls.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="w-12 h-12 mx-auto mb-3 bg-neutral-800 rounded-full flex items-center justify-center">
+                  <svg
+                    className="w-6 h-6 text-neutral-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-sm font-medium text-white mb-1">
+                  No calls yet
+                </h3>
+                <p className="text-xs text-neutral-400">
+                  Recent calls will appear here
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentCalls.map((call) => (
+                  <div
+                    key={call.call_id}
+                    className="p-3 bg-neutral-800/50 rounded-lg"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 bg-sky-500 rounded-full flex items-center justify-center">
+                          <span className="text-white text-xs font-semibold">
+                            {getCallerName(call).charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-white">
+                          {getCallerName(call)}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-xs font-medium ${getStatusColor(
+                          call.call_status
+                        )}`}
+                      >
+                        {call.call_status}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-neutral-400">
+                      <span>{getPhoneNumber(call)}</span>
+                      <div className="flex items-center gap-3">
+                        <span>{formatDuration(call.duration_ms)}</span>
+                        <span>{formatCallDate(call.start_timestamp)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Link href="/dashboard/calls">
+              <Button className="w-full mt-4 bg-sky-500 hover:bg-sky-600 text-white">
+                View All Calls
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>
