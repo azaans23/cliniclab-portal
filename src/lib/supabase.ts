@@ -157,3 +157,80 @@ export interface RetellListCallsResponse {
   calls: RetellCall[];
   pagination_key?: string;
 }
+
+export interface ClinicConfig {
+  id: string;
+  client_id: string;
+  client_name: string;
+  location_id: string;
+  calendar_ids: string[];
+  ghl_api: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// GHL API types
+export interface GHLAppointment {
+  id: string;
+  userId: string;
+  calendarProviderId: string;
+  calendarId: string;
+  contactId: string;
+  calendarServiceId: string;
+  isRecurring: boolean;
+  status: string;
+  appoinmentStatus: string;
+  title: string;
+  locationId: string;
+  startTime: string;
+  endTime: string;
+  selectedTimezone: string;
+  createdAt?: string;
+  contact: {
+    id: string;
+    locationId: string;
+    email: string;
+    emailLowerCase: string;
+    fingerprint: string;
+    timezone: string;
+    country: string;
+    customField: Array<{
+      id: string;
+      value: string;
+    }>;
+    tags: string[];
+    __moreField__: string;
+    // Add missing properties
+    firstName?: string;
+    lastName?: string;
+    fullNameLowerCase?: string;
+  };
+}
+
+export interface GHLAppointmentsResponse {
+  appointments: GHLAppointment[];
+}
+
+export interface GHLCalendar {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  timezone?: string;
+}
+
+export interface GHLCalendarsResponse {
+  calendars: GHLCalendar[];
+}
+
+export interface GHLService {
+  id: string;
+  name: string;
+  description?: string;
+  appointmentTitle?: string;
+  // ... other service properties
+}
+
+export interface GHLServicesResponse {
+  services: GHLService[];
+}

@@ -14,6 +14,10 @@ import {
   MessagesTaken,
   RetellCall,
   RetellConfig,
+  GHLAppointment,
+  GHLCalendar,
+  ClinicConfig,
+  GHLService,
 } from "@/lib/supabase";
 import Link from "next/link";
 
@@ -119,6 +123,55 @@ const getStatusColor = (status: string) => {
   }
 };
 
+// Helper functions for appointments
+const getPatientName = (appointment: GHLAppointment) => {
+  const email = appointment.contact?.email || "Unknown";
+  const name = email.split("@")[0];
+  return name.charAt(0).toUpperCase() + name.slice(1);
+};
+
+const getAppointmentType = (appointment: GHLAppointment, calendars: GHLCalendar[]) => {
+  const calendar = calendars.find(cal => cal.id === appointment.calendarId);
+  return calendar?.name || "Unknown Type";
+};
+
+const formatAppointmentDateTime = (dateTimeString: string) => {
+  const date = new Date(dateTimeString);
+  const now = new Date();
+  const diffInHours = Math.floor(
+    (now.getTime() - date.getTime()) / (1000 * 60 * 60)
+  );
+
+  if (diffInHours < 1) {
+    return "Just now";
+  } else if (diffInHours < 24) {
+    return `${diffInHours} hours ago`;
+  } else if (diffInHours < 48) {
+    return "Yesterday";
+  } else {
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+};
+
+const getAppointmentStatusColor = (status: string) => {
+  switch (status.toLowerCase()) {
+    case "confirmed":
+    case "booked":
+      return "text-green-400";
+    case "pending":
+      return "text-yellow-400";
+    case "cancelled":
+      return "text-red-400";
+    default:
+      return "text-neutral-400";
+  }
+};
+
 export default function Dashboard() {
   const [recentMessages, setRecentMessages] = useState<MessageWithDetails[]>(
     []
@@ -126,10 +179,15 @@ export default function Dashboard() {
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [recentCalls, setRecentCalls] = useState<RetellCall[]>([]);
   const [callsLoading, setCallsLoading] = useState(true);
+  const [recentAppointments, setRecentAppointments] = useState<GHLAppointment[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(true);
+  const [appointmentCalendars, setAppointmentCalendars] = useState<GHLCalendar[]>([]);
   const [retellConfig, setRetellConfig] = useState<RetellConfig | null>(null);
+  const [clinicConfig, setClinicConfig] = useState<ClinicConfig | null>(null);
 
   useEffect(() => {
     fetchRetellConfig();
+    fetchClinicConfig();
     fetchRecentMessages();
   }, []);
 
@@ -138,6 +196,13 @@ export default function Dashboard() {
       fetchRecentCalls();
     }
   }, [retellConfig]);
+
+  useEffect(() => {
+    if (clinicConfig) {
+      fetchAppointmentCalendars();
+      fetchRecentAppointments();
+    }
+  }, [clinicConfig]);
 
   const fetchRetellConfig = async () => {
     try {
@@ -160,6 +225,132 @@ export default function Dashboard() {
       setRetellConfig(data);
     } catch (error) {
       console.error("Error:", error);
+    }
+  };
+
+  const fetchClinicConfig = async () => {
+    try {
+      const userData = localStorage.getItem("user");
+      if (!userData) return;
+
+      const user = JSON.parse(userData);
+
+      const { data, error } = await supabase
+        .from("clinic_config")
+        .select("*")
+        .eq("client_id", user.id)
+        .single();
+
+      if (error) {
+        console.error("Error fetching clinic config:", error);
+        return;
+      }
+
+      setClinicConfig(data);
+    } catch (error) {
+      console.error("Error:", error);
+    }
+  };
+
+  const fetchAppointmentCalendars = async () => {
+    if (!clinicConfig) return;
+
+    try {
+      const response = await fetch("https://rest.gohighlevel.com/v1/calendars/services", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${clinicConfig.ghl_api}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.error("Services API Error:", response.status);
+        return;
+      }
+
+      const data = await response.json();
+      
+      // Create calendar objects from services, matching with calendar_ids
+      const serviceMap = new Map<string, GHLService>();
+      data.services?.forEach((service: GHLService) => {
+        serviceMap.set(service.id, service);
+      });
+
+      const calendarList: GHLCalendar[] = clinicConfig.calendar_ids
+        .map((calendarId) => {
+          const service = serviceMap.get(calendarId);
+          if (service) {
+            return {
+              id: calendarId,
+              name: service.name.replace(/\b\w/g, (char: string) => char.toUpperCase()),
+              description: service.description || `Service ${calendarId}`,
+            } as GHLCalendar;
+          }
+          return null;
+        })
+        .filter((calendar): calendar is GHLCalendar => calendar !== null);
+
+      setAppointmentCalendars(calendarList);
+    } catch (error) {
+      console.error("Error fetching appointment calendars:", error);
+    }
+  };
+
+  const fetchRecentAppointments = async () => {
+    if (!clinicConfig) return;
+
+    setAppointmentsLoading(true);
+    try {
+      // Set date range to last 30 days
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 30);
+
+      let allAppointments: GHLAppointment[] = [];
+
+      // Fetch appointments for all calendar IDs
+      for (const calendarId of clinicConfig.calendar_ids) {
+        const params = new URLSearchParams();
+        params.append("startDate", startDate.getTime().toString());
+        params.append("endDate", endDate.getTime().toString());
+        params.append("includeAll", "true");
+        params.append("locationId", clinicConfig.location_id);
+        params.append("calendarId", calendarId);
+
+        const response = await fetch(
+          `https://rest.gohighlevel.com/v1/appointments/?${params.toString()}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${clinicConfig.ghl_api}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          console.error(`API Error for calendar ${calendarId}:`, response.status);
+          continue;
+        }
+
+        const data = await response.json();
+        if (data.appointments) {
+          allAppointments = [...allAppointments, ...data.appointments];
+        }
+      }
+
+      // Sort appointments by createdAt (newest first) and take first 4
+      allAppointments.sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.startTime).getTime();
+        const dateB = new Date(b.createdAt || b.startTime).getTime();
+        return dateB - dateA;
+      });
+      setRecentAppointments(allAppointments.slice(0, 4));
+    } catch (error) {
+      console.error("Error fetching recent appointments:", error);
+    } finally {
+      setAppointmentsLoading(false);
     }
   };
 
@@ -512,16 +703,79 @@ export default function Dashboard() {
         {/* Recent Appointments */}
         <Card className="bg-neutral-900/80 border-neutral-800">
           <CardHeader>
-            <CardTitle className="text-white">Upcoming Appointments</CardTitle>
+            <CardTitle className="text-white">Recent Appointments</CardTitle>
             <CardDescription className="text-neutral-400">
-              Scheduled patient visits
+              Latest created appointments
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <SkeletonTable />
-            <Button className="w-full mt-4 bg-indigo-500 hover:bg-indigo-600 text-white">
-              View All Appointments
-            </Button>
+            {appointmentsLoading ? (
+              <SkeletonTable />
+            ) : recentAppointments.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="w-12 h-12 mx-auto mb-3 bg-neutral-800 rounded-full flex items-center justify-center">
+                  <svg
+                    className="w-6 h-6 text-neutral-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-sm font-medium text-white mb-1">
+                  No appointments yet
+                </h3>
+                <p className="text-xs text-neutral-400">
+                  Recent appointments will appear here
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentAppointments.map((appointment) => (
+                  <div
+                    key={appointment.id}
+                    className="p-3 bg-neutral-800/50 rounded-lg"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center">
+                          <span className="text-white text-xs font-semibold">
+                            {getPatientName(appointment).charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-white">
+                          {getPatientName(appointment)}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-xs font-medium ${getAppointmentStatusColor(
+                          appointment.appoinmentStatus
+                        )}`}
+                      >
+                        {appointment.appoinmentStatus}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-neutral-400">
+                      <span>{getAppointmentType(appointment, appointmentCalendars)}</span>
+                      <div className="flex items-center gap-3">
+                        <span>{formatAppointmentDateTime(appointment.createdAt || appointment.startTime)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Link href="/dashboard/appointments">
+              <Button className="w-full mt-4 bg-indigo-500 hover:bg-indigo-600 text-white">
+                View All Appointments
+              </Button>
+            </Link>
           </CardContent>
         </Card>
 
