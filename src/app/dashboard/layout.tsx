@@ -157,7 +157,7 @@ export default function DashboardLayout({
         <div className="flex items-center justify-between h-16 px-6 border-b border-neutral-800">
           <div className="flex items-center gap-2">
             <Image
-              src="https://framerusercontent.com/images/cFg81lJ0JlT447nO7SdDH9PBbeo.png?scale-down-to=512"
+              src="/cliniclab-logo.png"
               alt="Clinic Lab AI Logo"
               width={32}
               height={32}

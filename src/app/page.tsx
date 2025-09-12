@@ -71,7 +71,7 @@ export default function Home() {
         <div className="text-center mb-8">
           <div className="flex items-end justify-center gap-1 mb-6">
             <Image
-              src="https://framerusercontent.com/images/cFg81lJ0JlT447nO7SdDH9PBbeo.png?scale-down-to=512"
+              src="/cliniclab-logo.png"
               alt="Clinic Lab AI Logo"
               width={48}
               height={48}

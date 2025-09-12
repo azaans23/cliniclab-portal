@@ -13,8 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ClinicLab Portal",
+  title: "Clinic Lab AI Portal",
   description: "Laboratory management system portal",
+  icons: {
+    icon: "/cliniclab-logo.png", // favicon for browsers
+    shortcut: "/cliniclab-logo.png", // for shortcut icons
+    apple: "/cliniclab-logo.png", // for Apple devices
+  },
 };
 
 export default function RootLayout({
