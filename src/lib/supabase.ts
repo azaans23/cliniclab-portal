@@ -234,3 +234,22 @@ export interface GHLService {
 export interface GHLServicesResponse {
   services: GHLService[];
 }
+
+// Support Ticket types
+export type TicketStatus = "Opened" | "In Progress" | "Closed";
+
+export interface SupportTicket {
+  id: string;
+  client_id: string;
+  title: string;
+  description: string;
+  status: TicketStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSupportTicketRequest {
+  title: string;
+  description: string;
+  status?: TicketStatus;
+}

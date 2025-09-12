@@ -130,8 +130,11 @@ const getPatientName = (appointment: GHLAppointment) => {
   return name.charAt(0).toUpperCase() + name.slice(1);
 };
 
-const getAppointmentType = (appointment: GHLAppointment, calendars: GHLCalendar[]) => {
-  const calendar = calendars.find(cal => cal.id === appointment.calendarId);
+const getAppointmentType = (
+  appointment: GHLAppointment,
+  calendars: GHLCalendar[]
+) => {
+  const calendar = calendars.find((cal) => cal.id === appointment.calendarId);
   return calendar?.name || "Unknown Type";
 };
 
@@ -179,9 +182,13 @@ export default function Dashboard() {
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [recentCalls, setRecentCalls] = useState<RetellCall[]>([]);
   const [callsLoading, setCallsLoading] = useState(true);
-  const [recentAppointments, setRecentAppointments] = useState<GHLAppointment[]>([]);
+  const [recentAppointments, setRecentAppointments] = useState<
+    GHLAppointment[]
+  >([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
-  const [appointmentCalendars, setAppointmentCalendars] = useState<GHLCalendar[]>([]);
+  const [appointmentCalendars, setAppointmentCalendars] = useState<
+    GHLCalendar[]
+  >([]);
   const [retellConfig, setRetellConfig] = useState<RetellConfig | null>(null);
   const [clinicConfig, setClinicConfig] = useState<ClinicConfig | null>(null);
 
@@ -256,13 +263,16 @@ export default function Dashboard() {
     if (!clinicConfig) return;
 
     try {
-      const response = await fetch("https://rest.gohighlevel.com/v1/calendars/services", {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${clinicConfig.ghl_api}`,
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(
+        "https://rest.gohighlevel.com/v1/calendars/services",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${clinicConfig.ghl_api}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
       if (!response.ok) {
         console.error("Services API Error:", response.status);
@@ -270,7 +280,7 @@ export default function Dashboard() {
       }
 
       const data = await response.json();
-      
+
       // Create calendar objects from services, matching with calendar_ids
       const serviceMap = new Map<string, GHLService>();
       data.services?.forEach((service: GHLService) => {
@@ -283,7 +293,9 @@ export default function Dashboard() {
           if (service) {
             return {
               id: calendarId,
-              name: service.name.replace(/\b\w/g, (char: string) => char.toUpperCase()),
+              name: service.name.replace(/\b\w/g, (char: string) =>
+                char.toUpperCase()
+              ),
               description: service.description || `Service ${calendarId}`,
             } as GHLCalendar;
           }
@@ -330,7 +342,10 @@ export default function Dashboard() {
         );
 
         if (!response.ok) {
-          console.error(`API Error for calendar ${calendarId}:`, response.status);
+          console.error(
+            `API Error for calendar ${calendarId}:`,
+            response.status
+          );
           continue;
         }
 
@@ -746,7 +761,9 @@ export default function Dashboard() {
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center">
                           <span className="text-white text-xs font-semibold">
-                            {getPatientName(appointment).charAt(0).toUpperCase()}
+                            {getPatientName(appointment)
+                              .charAt(0)
+                              .toUpperCase()}
                           </span>
                         </div>
                         <p className="text-sm font-medium text-white">
@@ -762,9 +779,15 @@ export default function Dashboard() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-xs text-neutral-400">
-                      <span>{getAppointmentType(appointment, appointmentCalendars)}</span>
+                      <span>
+                        {getAppointmentType(appointment, appointmentCalendars)}
+                      </span>
                       <div className="flex items-center gap-3">
-                        <span>{formatAppointmentDateTime(appointment.createdAt || appointment.startTime)}</span>
+                        <span>
+                          {formatAppointmentDateTime(
+                            appointment.createdAt || appointment.startTime
+                          )}
+                        </span>
                       </div>
                     </div>
                   </div>

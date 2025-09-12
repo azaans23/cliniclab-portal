@@ -85,13 +85,16 @@ export default function AppointmentsPage() {
     if (!clinicConfig) return;
 
     try {
-      const response = await fetch("https://rest.gohighlevel.com/v1/calendars/services", {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${clinicConfig.ghl_api}`,
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(
+        "https://rest.gohighlevel.com/v1/calendars/services",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${clinicConfig.ghl_api}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
       if (!response.ok) {
         console.error("Services API Error:", response.status);
@@ -135,7 +138,7 @@ export default function AppointmentsPage() {
     try {
       // Set default date range if no dates are provided
       let startDate, endDate;
-      
+
       if (filters.startDate) {
         startDate = new Date(filters.startDate);
         startDate.setHours(0, 0, 0, 0);
@@ -145,7 +148,7 @@ export default function AppointmentsPage() {
         startDate.setFullYear(startDate.getFullYear() - 1);
         startDate.setHours(0, 0, 0, 0);
       }
-      
+
       if (filters.endDate) {
         endDate = new Date(filters.endDate);
         endDate.setHours(23, 59, 59, 999);
@@ -166,7 +169,10 @@ export default function AppointmentsPage() {
           params.append("locationId", clinicConfig.location_id);
           params.append("calendarId", calendarId);
 
-          console.log(`Fetching appointments for calendar ${calendarId} with params:`, params.toString());
+          console.log(
+            `Fetching appointments for calendar ${calendarId} with params:`,
+            params.toString()
+          );
 
           const response = await fetch(
             `https://rest.gohighlevel.com/v1/appointments/?${params.toString()}`,
@@ -181,7 +187,11 @@ export default function AppointmentsPage() {
 
           if (!response.ok) {
             const errorText = await response.text();
-            console.error(`API Error for calendar ${calendarId}:`, response.status, errorText);
+            console.error(
+              `API Error for calendar ${calendarId}:`,
+              response.status,
+              errorText
+            );
             continue; // Skip this calendar and continue with others
           }
 
@@ -199,7 +209,10 @@ export default function AppointmentsPage() {
         params.append("locationId", clinicConfig.location_id);
         params.append("calendarId", filters.appointmentType);
 
-        console.log("Fetching appointments for specific calendar with params:", params.toString());
+        console.log(
+          "Fetching appointments for specific calendar with params:",
+          params.toString()
+        );
 
         const response = await fetch(
           `https://rest.gohighlevel.com/v1/appointments/?${params.toString()}`,
@@ -225,14 +238,22 @@ export default function AppointmentsPage() {
       }
 
       // Sort appointments by start time (newest first)
-      allAppointments.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+      allAppointments.sort(
+        (a, b) =>
+          new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+      );
 
       // Apply client-side pagination
       const startIndex = (pagination.currentPage - 1) * pagination.pageSize;
       const endIndex = startIndex + pagination.pageSize;
       const paginatedAppointments = allAppointments.slice(startIndex, endIndex);
 
-      console.log("All appointments:", allAppointments.length, "Paginated:", paginatedAppointments.length);
+      console.log(
+        "All appointments:",
+        allAppointments.length,
+        "Paginated:",
+        paginatedAppointments.length
+      );
       setAppointments(paginatedAppointments);
 
       // Update pagination state
