@@ -4,8 +4,9 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
+import { supabase, Bots } from "@/lib/supabase";
 
-const sidebarItems = [
+const baseSidebarItems = [
   {
     name: "Dashboard",
     href: "/dashboard",
@@ -109,12 +110,31 @@ const sidebarItems = [
   },
 ];
 
+const reactivationCampaignsItem = {
+  name: "Reactivation Campaigns",
+  href: "/dashboard/reactivation-campaigns",
+  icon: (
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+      />
+    </svg>
+  ),
+};
+
 interface User {
   id: string;
   name: string;
   email: string;
   password: string;
-  created_at: string;
   updated_at: string;
 }
 
@@ -123,8 +143,10 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [hasReactivationBot, setHasReactivationBot] = useState(false);
+  const [loading, setLoading] = useState(true);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -137,6 +159,34 @@ export default function DashboardLayout({
     setUser(JSON.parse(userData));
   }, [router]);
 
+  useEffect(() => {
+    if (user) {
+      checkReactivationBotAccess();
+    }
+  }, [user]);
+
+  const checkReactivationBotAccess = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("bots")
+        .select("reactivation_bot")
+        .eq("client_id", user!.id)
+        .single();
+
+      if (error) {
+        console.error("Error checking reactivation bot access:", error);
+        setHasReactivationBot(false);
+      } else {
+        setHasReactivationBot(data?.reactivation_bot || false);
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      setHasReactivationBot(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("user");
     router.push("/");
@@ -145,6 +195,11 @@ export default function DashboardLayout({
   if (!user) {
     return null;
   }
+
+  // Build sidebar items based on bot access
+  const sidebarItems = hasReactivationBot 
+    ? [...baseSidebarItems, reactivationCampaignsItem]
+    : baseSidebarItems;
 
   return (
     <div className="min-h-screen bg-neutral-950">
@@ -208,15 +263,19 @@ export default function DashboardLayout({
         </nav>
 
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-neutral-800">
-          <div className="flex items-center gap-3 mb-3">
+          <div className="flex items-center gap-3 mb-4">
             <div className="w-8 h-8 bg-sky-500 rounded-full flex items-center justify-center">
               <span className="text-white text-sm font-semibold">
-                {user.name?.charAt(0) || "U"}
+                {user.name.charAt(0).toUpperCase()}
               </span>
             </div>
-            <div>
-              <p className="text-sm font-medium text-white">{user.name}</p>
-              <p className="text-xs text-neutral-400">{user.email}</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white truncate">
+                {user.name}
+              </p>
+              <p className="text-xs text-neutral-400 truncate">
+                {user.email}
+              </p>
             </div>
           </div>
           <button
@@ -241,48 +300,6 @@ export default function DashboardLayout({
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="lg:pl-64">
-        {/* Top bar */}
-        <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-neutral-800 bg-neutral-900 px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            className="-m-2.5 p-2.5 text-neutral-400 lg:hidden"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <svg
-              className="h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth="1.5"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-              />
-            </svg>
-          </button>
-          <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
-            <div className="flex flex-1"></div>
-            <div className="flex items-center gap-x-4 lg:gap-x-6">
-              <div className="text-sm text-neutral-400">
-                Welcome back,{" "}
-                <span className="font-semibold text-white">{user.name}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Page content */}
-        <main className="py-6">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            {children}
-          </div>
-        </main>
-      </div>
-
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
@@ -290,6 +307,50 @@ export default function DashboardLayout({
           onClick={() => setSidebarOpen(false)}
         />
       )}
+
+      {/* Main content */}
+      <div className="lg:pl-64">
+        {/* Mobile header */}
+        <div className="lg:hidden flex items-center justify-between h-16 px-4 bg-neutral-900 border-b border-neutral-800">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="text-neutral-400 hover:text-white"
+          >
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+          </button>
+          <div className="flex items-center gap-2">
+            <Image
+              src="/cliniclab-logo.png"
+              alt="Clinic Lab AI Logo"
+              width={24}
+              height={24}
+              className="w-6 h-6"
+            />
+            <span className="text-lg font-bold text-white">
+              <span className="text-white">Clinic Lab </span>
+              <span className="text-sky-500">AI</span>
+            </span>
+          </div>
+          <div className="w-6" />
+        </div>
+
+        {/* Page content */}
+        <main className="p-6">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
