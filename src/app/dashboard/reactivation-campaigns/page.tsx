@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
-import { supabase, Bots } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import * as XLSX from 'xlsx';
 
 interface User {
@@ -35,21 +35,11 @@ export default function ReactivationCampaignsPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [csvData, setCsvData] = useState<ContactData[]>([]);
   const [showDataTable, setShowDataTable] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [editingData, setEditingData] = useState<ContactData[]>([]);
 
-  useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (!userData) return;
-
-    const user = JSON.parse(userData);
-    setUser(user);
-    checkReactivationBotAccess(user);
-  }, []);
-
-  const checkReactivationBotAccess = async (user: User) => {
+  const checkReactivationBotAccess = useCallback(async (user: User) => {
     try {
       const { data, error } = await supabase
         .from("bots")
@@ -68,11 +58,19 @@ export default function ReactivationCampaignsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const userData = localStorage.getItem("user");
+    if (!userData) return;
+
+    const user = JSON.parse(userData);
+    setUser(user);
+    checkReactivationBotAccess(user);
+  }, [checkReactivationBotAccess]);
 
   const parseCSV = (csvText: string): ContactData[] => {
     const lines = csvText.split('\n');
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
     
     const data: ContactData[] = [];
     for (let i = 1; i < lines.length; i++) {
@@ -104,11 +102,10 @@ export default function ReactivationCampaignsPage() {
         throw new Error("File must contain at least a header row and one data row");
       }
       
-      const headers = (jsonData[0] as string[]).map(h => h?.toString().toLowerCase().trim() || '');
       const data: ContactData[] = [];
       
       for (let i = 1; i < jsonData.length; i++) {
-        const row = jsonData[i] as any[];
+        const row = jsonData[i] as unknown[];
         if (row && row.length >= 3) {
           data.push({
             name: (row[0]?.toString() || '').trim(),
@@ -159,7 +156,6 @@ export default function ReactivationCampaignsPage() {
           reader.onload = (e) => {
             const csvText = e.target?.result as string;
             const parsedData = parseCSV(csvText);
-            setCsvData(parsedData);
             setEditingData([...parsedData]);
             setShowDataTable(true);
           };
@@ -167,7 +163,6 @@ export default function ReactivationCampaignsPage() {
           return;
         }
         
-        setCsvData(parsedData);
         setEditingData([...parsedData]);
         setShowDataTable(true);
       } catch (error) {
@@ -213,7 +208,6 @@ export default function ReactivationCampaignsPage() {
 
       setUploadSuccess(true);
       setShowDataTable(false);
-      setCsvData([]);
       setEditingData([]);
       
       // Close modal after successful upload
@@ -247,7 +241,6 @@ export default function ReactivationCampaignsPage() {
     setSelectedFile(null);
     setUploadError(null);
     setUploadSuccess(false);
-    setCsvData([]);
     setEditingData([]);
     setShowDataTable(false);
     const fileInput = document.getElementById("csv-upload") as HTMLInputElement;
@@ -318,7 +311,7 @@ export default function ReactivationCampaignsPage() {
                 Access Restricted
               </h3>
               <p className="text-neutral-400 mb-4">
-                You don't have access to reactivation campaigns. Please contact your administrator to enable this feature.
+                You don&apos;t have access to reactivation campaigns. Please contact your administrator to enable this feature.
               </p>
             </div>
           </CardContent>
