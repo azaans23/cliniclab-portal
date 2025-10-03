@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -20,20 +20,33 @@ import {
   GHLService,
 } from "@/lib/supabase";
 import Link from "next/link";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
-// Dummy data
-const stats = {
-  totalCalls: 1247,
-  totalAppointments: 89,
-  totalMessages: 342,
-  supportTickets: 23,
-};
+// Dynamic stats interface
+interface CallStats {
+  current: number;
+  previous: number;
+}
 
 interface MessageWithDetails extends MessagesTaken {
   caller_name: string;
   caller_phone: string;
   message_content: string;
   date_time: string;
+}
+
+interface RateLimitState {
+  isRateLimited: boolean;
+  retryAfter: number;
+  retryCount: number;
 }
 
 const SkeletonTable = () => (
@@ -179,9 +192,28 @@ export default function Dashboard() {
   const [recentMessages, setRecentMessages] = useState<MessageWithDetails[]>(
     []
   );
+  const [openTickets, setOpenTickets] = useState<number | null>(null);
+  const [loadingTickets, setLoadingTickets] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(true);
+  const [currentMessagesCount, setCurrentMessagesCount] = useState(0);
+  const [previousMessagesCount, setPreviousMessagesCount] = useState(0);
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [recentCalls, setRecentCalls] = useState<RetellCall[]>([]);
   const [callsLoading, setCallsLoading] = useState(true);
+  const [callStats, setCallStats] = useState<CallStats>({
+    current: 0,
+    previous: 0,
+  });
+  const [appointmentStats, setAppointmentStats] = useState<CallStats>({
+    current: 0,
+    previous: 0,
+  });
+  const [weeklyCallData, setWeeklyCallData] = useState<
+    Array<{ date: string; calls: number }>
+  >([]);
+  const [weeklyCallsLoading, setWeeklyCallsLoading] = useState(true);
+  const [appointmentStatsLoading, setAppointmentStatsLoading] = useState(true);
+  const [callStatsLoading, setCallStatsLoading] = useState(true);
   const [recentAppointments, setRecentAppointments] = useState<
     GHLAppointment[]
   >([]);
@@ -191,25 +223,216 @@ export default function Dashboard() {
   >([]);
   const [retellConfig, setRetellConfig] = useState<RetellConfig | null>(null);
   const [clinicConfig, setClinicConfig] = useState<ClinicConfig | null>(null);
+  const [rateLimitState, setRateLimitState] = useState<RateLimitState>({
+    isRateLimited: false,
+    retryAfter: 0,
+    retryCount: 0,
+  });
 
   useEffect(() => {
     fetchRetellConfig();
     fetchClinicConfig();
     fetchRecentMessages();
+    fetchOpenTickets();
+    fetchMessagesStats();
   }, []);
 
   useEffect(() => {
     if (retellConfig) {
       fetchRecentCalls();
+      fetchCallStats();
+      fetchWeeklyCallData();
     }
   }, [retellConfig]);
 
   useEffect(() => {
     if (clinicConfig) {
       fetchAppointmentCalendars();
-      fetchRecentAppointments();
+      fetchAppointments();
     }
   }, [clinicConfig]);
+
+  // Rate limit countdown timer
+  useEffect(() => {
+    if (rateLimitState.isRateLimited && rateLimitState.retryAfter > 0) {
+      const timer = setInterval(() => {
+        setRateLimitState((prev) => {
+          if (prev.retryAfter <= 1) {
+            // Retry fetch when countdown reaches 0
+            if (retellConfig) {
+              fetchRecentCalls();
+              fetchCallStats();
+              fetchWeeklyCallData();
+            }
+            return { isRateLimited: false, retryAfter: 0, retryCount: 0 };
+          }
+          return { ...prev, retryAfter: prev.retryAfter - 1 };
+        });
+      }, 1000);
+
+      return () => clearInterval(timer);
+    }
+  }, [rateLimitState.isRateLimited, rateLimitState.retryAfter, retellConfig]);
+
+  const sleep = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  const handleRateLimit = async (
+    response: Response,
+    retryCount: number = 0
+  ): Promise<{ shouldRetry: boolean; waitTime: number }> => {
+    if (response.status === 429) {
+      const retryAfterHeader = response.headers.get("Retry-After");
+      const baseWaitTime = retryAfterHeader
+        ? parseInt(retryAfterHeader, 10)
+        : 5;
+
+      // Exponential backoff with jitter
+      const exponentialWait = Math.min(
+        baseWaitTime * Math.pow(2, retryCount),
+        60
+      );
+      const jitter = Math.random() * 2;
+      const waitTime = Math.floor(exponentialWait + jitter);
+
+      console.warn(
+        `Rate limit hit (attempt ${retryCount + 1}), waiting ${waitTime}s...`
+      );
+
+      setRateLimitState({
+        isRateLimited: true,
+        retryAfter: waitTime,
+        retryCount: retryCount + 1,
+      });
+
+      return { shouldRetry: retryCount < 3, waitTime };
+    }
+
+    return { shouldRetry: false, waitTime: 0 };
+  };
+
+  const fetchWithRetry = async (
+    url: string,
+    options: RequestInit,
+    maxRetries: number = 3
+  ): Promise<Response | null> => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, options);
+
+        if (response.status === 429) {
+          const { shouldRetry, waitTime } = await handleRateLimit(
+            response,
+            attempt
+          );
+
+          if (shouldRetry) {
+            await sleep(waitTime * 1000);
+            continue;
+          } else {
+            console.error("Max rate limit retries exceeded");
+            return null;
+          }
+        }
+
+        if (!response.ok && response.status !== 429) {
+          console.error(`HTTP error! status: ${response.status}`);
+          return response;
+        }
+
+        // Reset rate limit state on successful request
+        if (rateLimitState.isRateLimited) {
+          setRateLimitState({
+            isRateLimited: false,
+            retryAfter: 0,
+            retryCount: 0,
+          });
+        }
+
+        return response;
+      } catch (error) {
+        console.error(`Request attempt ${attempt + 1} failed:`, error);
+        if (attempt === maxRetries) {
+          return null;
+        }
+        await sleep(Math.pow(2, attempt) * 1000);
+      }
+    }
+
+    return null;
+  };
+
+  const fetchMessagesStats = async () => {
+    try {
+      const userData = localStorage.getItem("user");
+      if (!userData) return;
+      const user = JSON.parse(userData);
+
+      const now = new Date();
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(now.getDate() - 60);
+
+      const { count: current, error: currentError } = await supabase
+        .from("messages_taken")
+        .select("id", { count: "exact" })
+        .eq("client_id", user.id)
+        .gte("date_time", thirtyDaysAgo.toISOString())
+        .lte("date_time", now.toISOString());
+
+      if (currentError) {
+        console.error("Error fetching current messages:", currentError);
+        return;
+      }
+
+      const { count: previous, error: prevError } = await supabase
+        .from("messages_taken")
+        .select("id", { count: "exact" })
+        .eq("client_id", user.id)
+        .gte("date_time", sixtyDaysAgo.toISOString())
+        .lt("date_time", thirtyDaysAgo.toISOString());
+
+      if (prevError) {
+        console.error("Error fetching previous messages:", prevError);
+        return;
+      }
+
+      setCurrentMessagesCount(current || 0);
+      setPreviousMessagesCount(previous || 0);
+    } catch (err) {
+      console.error("Error fetching messages stats:", err);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  const fetchOpenTickets = async () => {
+    try {
+      const userData = localStorage.getItem("user");
+      if (!userData) return;
+
+      const user = JSON.parse(userData);
+
+      const { count, error } = await supabase
+        .from("support_ticket")
+        .select("*", { count: "exact" })
+        .eq("client_id", user.id)
+        .eq("status", "Opened");
+
+      if (error) {
+        console.error("Error fetching open tickets:", error);
+        return;
+      }
+
+      setOpenTickets(count || 0);
+    } catch (err) {
+      console.error("Error:", err);
+    } finally {
+      setLoadingTickets(false);
+    }
+  };
 
   const fetchRetellConfig = async () => {
     try {
@@ -259,6 +482,317 @@ export default function Dashboard() {
     }
   };
 
+  const fetchCallStats = async () => {
+    if (!retellConfig || rateLimitState.isRateLimited) return;
+
+    setCallStatsLoading(true);
+    try {
+      const now = new Date();
+
+      const currentEndDate = new Date(now);
+      currentEndDate.setHours(23, 59, 59, 999);
+      const currentStartDate = new Date(now);
+      currentStartDate.setDate(currentStartDate.getDate() - 30);
+      currentStartDate.setHours(0, 0, 0, 0);
+
+      const previousEndDate = new Date(currentStartDate);
+      previousEndDate.setMilliseconds(previousEndDate.getMilliseconds() - 1);
+      const previousStartDate = new Date(previousEndDate);
+      previousStartDate.setDate(previousStartDate.getDate() - 30);
+      previousStartDate.setHours(0, 0, 0, 0);
+
+      const currentInboundCalls = await fetchCallsForPeriod(
+        retellConfig.inbound_agent_id,
+        "inbound",
+        currentStartDate.getTime(),
+        currentEndDate.getTime()
+      );
+
+      const currentOutboundCalls = await fetchCallsForPeriod(
+        retellConfig.outbound_agent_id,
+        "outbound",
+        currentStartDate.getTime(),
+        currentEndDate.getTime()
+      );
+
+      const previousInboundCalls = await fetchCallsForPeriod(
+        retellConfig.inbound_agent_id,
+        "inbound",
+        previousStartDate.getTime(),
+        previousEndDate.getTime()
+      );
+
+      const previousOutboundCalls = await fetchCallsForPeriod(
+        retellConfig.outbound_agent_id,
+        "outbound",
+        previousStartDate.getTime(),
+        previousEndDate.getTime()
+      );
+
+      if (
+        currentInboundCalls !== null &&
+        currentOutboundCalls !== null &&
+        previousInboundCalls !== null &&
+        previousOutboundCalls !== null
+      ) {
+        const currentTotal = currentInboundCalls + currentOutboundCalls;
+        const previousTotal = previousInboundCalls + previousOutboundCalls;
+
+        setCallStats({
+          current: currentTotal,
+          previous: previousTotal,
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching call stats:", error);
+    } finally {
+      setCallStatsLoading(false);
+    }
+  };
+
+  const fetchCallsForWeeklyData = async (
+    agentId: string | null,
+    direction: "inbound" | "outbound",
+    startTimestamp: number,
+    endTimestamp: number
+  ): Promise<RetellCall[] | null> => {
+    if (!agentId || !retellConfig || rateLimitState.isRateLimited) return null;
+
+    try {
+      let allCalls: RetellCall[] = [];
+      let paginationKey = "";
+      let hasMoreCalls = true;
+
+      while (hasMoreCalls) {
+        const requestBody: {
+          sort_order: string;
+          limit: number;
+          filter_criteria: {
+            agent_id: string[];
+            call_type: string[];
+            direction: string[];
+            start_timestamp: {
+              lower_threshold: number;
+              upper_threshold: number;
+            };
+          };
+          pagination_key?: string;
+        } = {
+          sort_order: "descending",
+          limit: 1000,
+          filter_criteria: {
+            agent_id: [agentId],
+            call_type: ["phone_call"],
+            direction: [direction],
+            start_timestamp: {
+              lower_threshold: startTimestamp,
+              upper_threshold: endTimestamp,
+            },
+          },
+        };
+
+        if (paginationKey) {
+          requestBody.pagination_key = paginationKey;
+        }
+
+        const response = await fetchWithRetry(
+          "https://api.retellai.com/v2/list-calls",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${retellConfig.retell_api}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestBody),
+          }
+        );
+
+        if (!response) {
+          return null;
+        }
+
+        if (!response.ok) {
+          console.error(`HTTP error! status: ${response.status}`);
+          return null;
+        }
+
+        const data = await response.json();
+        const calls = data || [];
+        allCalls = [...allCalls, ...calls];
+
+        if (calls.length === 1000) {
+          paginationKey = calls[calls.length - 1]?.call_id;
+          hasMoreCalls = true;
+        } else {
+          hasMoreCalls = false;
+        }
+      }
+
+      return allCalls;
+    } catch (error) {
+      console.error(
+        `Error fetching ${direction} calls for weekly data:`,
+        error
+      );
+      return null;
+    }
+  };
+
+  const fetchWeeklyCallData = async () => {
+    if (!retellConfig || rateLimitState.isRateLimited) return;
+
+    setWeeklyCallsLoading(true);
+    try {
+      const now = new Date();
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(now.getDate() - 7);
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+
+      const [inboundCalls, outboundCalls] = await Promise.all([
+        fetchCallsForWeeklyData(
+          retellConfig.inbound_agent_id,
+          "inbound",
+          sevenDaysAgo.getTime(),
+          now.getTime()
+        ),
+        fetchCallsForWeeklyData(
+          retellConfig.outbound_agent_id,
+          "outbound",
+          sevenDaysAgo.getTime(),
+          now.getTime()
+        ),
+      ]);
+
+      // Only update if we got valid data
+      if (inboundCalls !== null && outboundCalls !== null) {
+        const allCalls = [...inboundCalls, ...outboundCalls];
+
+        const callsByDay = new Map<string, number>();
+
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date();
+          date.setDate(date.getDate() - i);
+          const dateStr = date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          });
+          callsByDay.set(dateStr, 0);
+        }
+
+        allCalls.forEach((call) => {
+          if (call.start_timestamp) {
+            const callDate = new Date(call.start_timestamp);
+            const dateStr = callDate.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            });
+            if (callsByDay.has(dateStr)) {
+              callsByDay.set(dateStr, (callsByDay.get(dateStr) || 0) + 1);
+            }
+          }
+        });
+
+        const chartData = Array.from(callsByDay.entries()).map(
+          ([date, calls]) => ({
+            date,
+            calls,
+          })
+        );
+
+        setWeeklyCallData(chartData);
+      }
+    } catch (error) {
+      console.error("Error fetching weekly call data:", error);
+    } finally {
+      setWeeklyCallsLoading(false);
+    }
+  };
+
+  const fetchCallsForPeriod = async (
+    agentId: string | null,
+    direction: "inbound" | "outbound",
+    startTimestamp: number,
+    endTimestamp: number
+  ): Promise<number | null> => {
+    if (!agentId || !retellConfig || rateLimitState.isRateLimited) return null;
+
+    try {
+      let totalCalls = 0;
+      let paginationKey = "";
+      let hasMoreCalls = true;
+
+      while (hasMoreCalls) {
+        const requestBody: {
+          sort_order: string;
+          limit: number;
+          filter_criteria: {
+            agent_id: string[];
+            call_type: string[];
+            direction: string[];
+            start_timestamp: {
+              lower_threshold: number;
+              upper_threshold: number;
+            };
+          };
+          pagination_key?: string;
+        } = {
+          sort_order: "descending",
+          limit: 1000,
+          filter_criteria: {
+            agent_id: [agentId],
+            call_type: ["phone_call"],
+            direction: [direction],
+            start_timestamp: {
+              lower_threshold: startTimestamp,
+              upper_threshold: endTimestamp,
+            },
+          },
+        };
+
+        if (paginationKey) {
+          requestBody.pagination_key = paginationKey;
+        }
+
+        const response = await fetchWithRetry(
+          "https://api.retellai.com/v2/list-calls",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${retellConfig.retell_api}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestBody),
+          }
+        );
+
+        if (!response) {
+          return null;
+        }
+
+        if (!response.ok) {
+          console.error(`HTTP error! status: ${response.status}`);
+          return null;
+        }
+
+        const data = await response.json();
+        const calls = data || [];
+        totalCalls += calls.length;
+
+        if (calls.length === 1000) {
+          paginationKey = calls[calls.length - 1]?.call_id;
+          hasMoreCalls = true;
+        } else {
+          hasMoreCalls = false;
+        }
+      }
+
+      return totalCalls;
+    } catch (error) {
+      console.error(`Error fetching ${direction} calls for period:`, error);
+      return null;
+    }
+  };
+
   const fetchAppointmentCalendars = async () => {
     if (!clinicConfig) return;
 
@@ -281,7 +815,6 @@ export default function Dashboard() {
 
       const data = await response.json();
 
-      // Create calendar objects from services, matching with calendar_ids
       const serviceMap = new Map<string, GHLService>();
       data.services?.forEach((service: GHLService) => {
         serviceMap.set(service.id, service);
@@ -309,19 +842,47 @@ export default function Dashboard() {
     }
   };
 
-  const fetchRecentAppointments = async () => {
+  const fetchAppointments = async () => {
     if (!clinicConfig) return;
 
+    setAppointmentStatsLoading(true);
     setAppointmentsLoading(true);
+
     try {
-      // Set date range to last 30 days
+      const [recentData, previousData] = await Promise.all([
+        fetchAppointmentsForPeriod(30, 0),
+        fetchAppointmentsForPeriod(60, 30),
+      ]);
+
+      setAppointmentStats({
+        current: recentData.count,
+        previous: previousData.count,
+      });
+
+      setRecentAppointments(recentData.appointments.slice(0, 4));
+    } catch (error) {
+      console.error("Error fetching appointments:", error);
+    } finally {
+      setAppointmentStatsLoading(false);
+      setAppointmentsLoading(false);
+    }
+  };
+
+  const fetchAppointmentsForPeriod = async (
+    daysAgo: number,
+    offsetDays: number
+  ): Promise<{ appointments: GHLAppointment[]; count: number }> => {
+    if (!clinicConfig) return { appointments: [], count: 0 };
+
+    try {
       const endDate = new Date();
+      endDate.setDate(endDate.getDate() - offsetDays);
+
       const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 30);
+      startDate.setDate(startDate.getDate() - daysAgo);
 
       let allAppointments: GHLAppointment[] = [];
 
-      // Fetch appointments for all calendar IDs
       for (const calendarId of clinicConfig.calendar_ids) {
         const params = new URLSearchParams();
         params.append("startDate", startDate.getTime().toString());
@@ -355,22 +916,24 @@ export default function Dashboard() {
         }
       }
 
-      // Sort appointments by createdAt (newest first) and take first 4
       allAppointments.sort((a, b) => {
         const dateA = new Date(a.createdAt || a.startTime).getTime();
         const dateB = new Date(b.createdAt || b.startTime).getTime();
         return dateB - dateA;
       });
-      setRecentAppointments(allAppointments.slice(0, 4));
+
+      return {
+        appointments: allAppointments,
+        count: allAppointments.length,
+      };
     } catch (error) {
-      console.error("Error fetching recent appointments:", error);
-    } finally {
-      setAppointmentsLoading(false);
+      console.error("Error fetching appointments for period:", error);
+      return { appointments: [], count: 0 };
     }
   };
 
   const fetchRecentCalls = async () => {
-    if (!retellConfig) return;
+    if (!retellConfig || rateLimitState.isRateLimited) return;
 
     setCallsLoading(true);
     try {
@@ -392,17 +955,27 @@ export default function Dashboard() {
         },
       };
 
-      const response = await fetch("https://api.retellai.com/v2/list-calls", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${retellConfig.retell_api}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
+      const response = await fetchWithRetry(
+        "https://api.retellai.com/v2/list-calls",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${retellConfig.retell_api}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+
+      if (!response) {
+        setRecentCalls([]);
+        return;
+      }
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        console.error(`HTTP error! status: ${response.status}`);
+        setRecentCalls([]);
+        return;
       }
 
       const data = await response.json();
@@ -470,9 +1043,106 @@ export default function Dashboard() {
     return message.substring(0, maxLength) + "...";
   };
 
+  function formatPercentageChange(current: number, previous: number) {
+    if (previous === 0 && current > 0)
+      return <p className="text-xs text-green-400">+100%</p>;
+    if (previous === 0 && current === 0)
+      return <p className="text-xs text-neutral-400">0%</p>;
+
+    const change = ((current - previous) / previous) * 100;
+    const rounded = Math.round(change);
+
+    if (change > 0) {
+      return (
+        <p className="text-xs text-green-400">+{rounded}% from last month</p>
+      );
+    } else if (change < 0) {
+      return <p className="text-xs text-red-400">{rounded}% from last month</p>;
+    } else {
+      return <p className="text-xs text-neutral-400">No change</p>;
+    }
+  }
+
+  const memoizedChartData = useMemo(() => weeklyCallData, [weeklyCallData]);
+
+  const ChartComponent = useMemo(() => {
+    if (memoizedChartData.length === 0) return null;
+
+    return (
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart
+          data={memoizedChartData}
+          margin={{ top: 5, right: 10, left: -10, bottom: 5 }}
+        >
+          <defs>
+            <linearGradient id="callsGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#374151"
+            vertical={false}
+          />
+          <XAxis
+            dataKey="date"
+            stroke="#6b7280"
+            style={{ fontSize: "12px" }}
+            tickLine={false}
+            axisLine={{ stroke: "#374151" }}
+          />
+          <YAxis
+            stroke="#6b7280"
+            style={{ fontSize: "12px" }}
+            allowDecimals={false}
+            tickLine={false}
+            axisLine={{ stroke: "#374151" }}
+          />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: "#1f2937",
+              border: "1px solid #374151",
+              borderRadius: "8px",
+              color: "#fff",
+              boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.3)",
+            }}
+            labelStyle={{ color: "#9ca3af", marginBottom: "4px" }}
+            itemStyle={{ color: "#0ea5e9" }}
+            cursor={{
+              stroke: "#0ea5e9",
+              strokeWidth: 1,
+              strokeDasharray: "3 3",
+            }}
+          />
+          <Line
+            type="monotone"
+            dataKey="calls"
+            stroke="#0ea5e9"
+            strokeWidth={3}
+            dot={{
+              fill: "#0ea5e9",
+              r: 5,
+              strokeWidth: 2,
+              stroke: "#1f2937",
+            }}
+            activeDot={{
+              r: 7,
+              strokeWidth: 2,
+              stroke: "#1f2937",
+              fill: "#0ea5e9",
+            }}
+            animationDuration={1500}
+            animationEasing="ease-in-out"
+            fill="url(#callsGradient)"
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  }, [memoizedChartData]);
+
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-white">Dashboard</h1>
         <p className="text-neutral-400 mt-2">
@@ -480,12 +1150,41 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* Stats Cards */}
+      {/* {rateLimitState.isRateLimited && (
+        <Card className="bg-yellow-900/20 border-yellow-500/50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <svg
+                className="h-5 w-5 text-yellow-500 animate-pulse"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              <div className="flex-1">
+                <p className="text-yellow-200 font-medium">
+                  Rate limit reached - Retrying in {rateLimitState.retryAfter}s
+                </p>
+                <p className="text-yellow-300/70 text-sm mt-1">
+                  Call data will refresh automatically once the limit resets
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )} */}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="bg-neutral-900/80 border-neutral-800">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-neutral-300">
-              Total Calls
+              Total Calls (last 30 days)
             </CardTitle>
             <svg
               className="h-4 w-4 text-sky-500"
@@ -502,17 +1201,26 @@ export default function Dashboard() {
             </svg>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">
-              {stats.totalCalls.toLocaleString()}
-            </div>
-            <p className="text-xs text-green-400">+12% from last month</p>
+            {callStatsLoading || rateLimitState.isRateLimited ? (
+              <div className="space-y-2">
+                <div className="h-8 bg-neutral-700 rounded animate-pulse w-24"></div>
+                <div className="h-4 bg-neutral-700 rounded animate-pulse w-32"></div>
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-white">
+                  {callStats.current.toLocaleString()}
+                </div>
+                {formatPercentageChange(callStats.current, callStats.previous)}
+              </>
+            )}
           </CardContent>
         </Card>
 
         <Card className="bg-neutral-900/80 border-neutral-800">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-neutral-300">
-              Appointments
+              Appointments (last 30 days)
             </CardTitle>
             <svg
               className="h-4 w-4 text-indigo-500"
@@ -529,17 +1237,29 @@ export default function Dashboard() {
             </svg>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">
-              {stats.totalAppointments}
-            </div>
-            <p className="text-xs text-green-400">+8% from last month</p>
+            {appointmentStatsLoading ? (
+              <div className="space-y-2">
+                <div className="h-8 bg-neutral-700 rounded animate-pulse w-24"></div>
+                <div className="h-4 bg-neutral-700 rounded animate-pulse w-32"></div>
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-white">
+                  {appointmentStats.current.toLocaleString()}
+                </div>
+                {formatPercentageChange(
+                  appointmentStats.current,
+                  appointmentStats.previous
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
 
         <Card className="bg-neutral-900/80 border-neutral-800">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-neutral-300">
-              Messages
+              Messages (last 30 days)
             </CardTitle>
             <svg
               className="h-4 w-4 text-green-500"
@@ -556,10 +1276,22 @@ export default function Dashboard() {
             </svg>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">
-              {stats.totalMessages}
-            </div>
-            <p className="text-xs text-green-400">+15% from last month</p>
+            {loadingMessages ? (
+              <div className="space-y-2">
+                <div className="h-8 bg-neutral-700 rounded animate-pulse w-24"></div>
+                <div className="h-4 bg-neutral-700 rounded animate-pulse w-32"></div>
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-white">
+                  {currentMessagesCount.toLocaleString()}
+                </div>
+                {formatPercentageChange(
+                  currentMessagesCount,
+                  previousMessagesCount
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -583,17 +1315,28 @@ export default function Dashboard() {
             </svg>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">
-              {stats.supportTickets}
-            </div>
-            <p className="text-xs text-red-400">+3 from yesterday</p>
+            {loadingTickets ? (
+              <div className="space-y-2">
+                <div className="h-8 bg-neutral-700 rounded animate-pulse w-24"></div>
+                <div className="h-4 bg-neutral-700 rounded animate-pulse w-32"></div>
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-white">
+                  {openTickets?.toLocaleString()}
+                </div>
+                <p className="text-xs text-red-400">
+                  {openTickets && openTickets > 0
+                    ? `+${openTickets} open`
+                    : "No open tickets"}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Charts and Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Call Activity Chart */}
         <Card className="bg-neutral-900/80 border-neutral-800">
           <CardHeader>
             <CardTitle className="text-white">
@@ -604,31 +1347,72 @@ export default function Dashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-64 flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-32 h-32 mx-auto mb-4 bg-gradient-to-br from-sky-500/20 to-indigo-500/20 rounded-full flex items-center justify-center">
-                  <svg
-                    className="w-16 h-16 text-sky-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1}
-                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                    />
-                  </svg>
-                </div>
-                <p className="text-neutral-400">
-                  Chart visualization would go here
-                </p>
-                <p className="text-sm text-neutral-500">
-                  Integration with chart library needed
-                </p>
+            {weeklyCallsLoading || rateLimitState.isRateLimited ? (
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height={300}>
+                  <div className="relative w-full h-full">
+                    <div className="absolute left-0 top-0 bottom-8 w-8 flex flex-col justify-between">
+                      {[...Array(6)].map((_, i) => (
+                        <div
+                          key={i}
+                          className="h-3 bg-neutral-700 rounded animate-pulse"
+                          style={{ width: "24px" }}
+                        ></div>
+                      ))}
+                    </div>
+                    <div className="absolute left-12 right-0 top-0 bottom-8 flex items-end justify-between gap-2">
+                      {[...Array(7)].map((_, i) => (
+                        <div
+                          key={i}
+                          className="flex-1 bg-gradient-to-t from-sky-500/20 to-sky-500/5 rounded-t animate-pulse"
+                          style={{
+                            height: `${Math.random() * 60 + 30}%`,
+                            animationDelay: `${i * 0.1}s`,
+                          }}
+                        ></div>
+                      ))}
+                    </div>
+                    <div className="absolute left-12 right-0 bottom-0 h-8 flex justify-between">
+                      {[...Array(7)].map((_, i) => (
+                        <div
+                          key={i}
+                          className="h-3 bg-neutral-700 rounded animate-pulse"
+                          style={{ width: "40px" }}
+                        ></div>
+                      ))}
+                    </div>
+                  </div>
+                </ResponsiveContainer>
               </div>
-            </div>
+            ) : ChartComponent ? (
+              ChartComponent
+            ) : (
+              <div className="h-[300px] flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-24 h-24 mx-auto mb-4 bg-gradient-to-br from-sky-500/10 to-indigo-500/10 rounded-2xl flex items-center justify-center border border-sky-500/20">
+                    <svg
+                      className="w-12 h-12 text-sky-500/40"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                      />
+                    </svg>
+                  </div>
+                  <p className="text-neutral-300 font-medium">
+                    No call data available
+                  </p>
+                  <p className="text-sm text-neutral-500 mt-1">
+                    Data will appear here once calls are recorded
+                  </p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
