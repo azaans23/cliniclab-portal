@@ -138,7 +138,7 @@ const getStatusColor = (status: string) => {
 
 // Helper functions for appointments
 const getPatientName = (appointment: GHLAppointment) => {
-  const email = appointment.contact?.email || "Unknown";
+  const email = appointment.contact?.fullNameLowerCase || "Unknown";
   const name = email.split("@")[0];
   return name.charAt(0).toUpperCase() + name.slice(1);
 };
