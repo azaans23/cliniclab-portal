@@ -16,7 +16,7 @@ export const SkeletonTable = () => (
             Status
           </th>
           {/* <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
-            Disconnection Reason
+            Disconnection Reason Test
           </th> */}
           <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
             Duration
