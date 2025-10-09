@@ -65,79 +65,79 @@ const getStatusColor = (status: string) => {
   }
 };
 
-const formatDisconnectionReason = (reason?: string) => {
-  if (!reason) return "N/A";
-  return reason.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
-};
+// const formatDisconnectionReason = (reason?: string) => {
+//   if (!reason) return "N/A";
+//   return reason.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+// };
 
-const getDisconnectionReasonColor = (reason?: string) => {
-  if (!reason) return "bg-neutral-500/20 text-neutral-400";
+// const getDisconnectionReasonColor = (reason?: string) => {
+//   if (!reason) return "bg-neutral-500/20 text-neutral-400";
 
-  switch (reason) {
-    case "agent_hangup":
-      return "bg-green-500/20 text-green-400";
-    case "user_hangup":
-      return "bg-blue-500/20 text-blue-400";
-    case "call_failed":
-      return "bg-red-500/20 text-red-400";
-    case "no_answer":
-      return "bg-yellow-500/20 text-yellow-400";
-    case "call_transfer":
-      return "bg-purple-500/20 text-purple-400";
-    case "voicemail_reached":
-      return "bg-orange-500/20 text-orange-400";
-    case "inactivity":
-      return "bg-yellow-500/20 text-yellow-400";
-    case "max_duration_reached":
-      return "bg-red-500/20 text-red-400";
-    case "concurrency_limit_reached":
-      return "bg-red-500/20 text-red-400";
-    case "no_valid_payment":
-      return "bg-red-500/20 text-red-400";
-    case "scam_detected":
-      return "bg-red-500/20 text-red-400";
-    case "dial_busy":
-      return "bg-yellow-500/20 text-yellow-400";
-    case "dial_failed":
-      return "bg-red-500/20 text-red-400";
-    case "dial_no_answer":
-      return "bg-yellow-500/20 text-yellow-400";
-    case "invalid_destination":
-      return "bg-red-500/20 text-red-400";
-    case "telephony_provider_permission_denied":
-      return "bg-red-500/20 text-red-400";
-    case "telephony_provider_unavailable":
-      return "bg-red-500/20 text-red-400";
-    case "sip_routing_error":
-      return "bg-red-500/20 text-red-400";
-    case "marked_as_spam":
-      return "bg-red-500/20 text-red-400";
-    case "user_declined":
-      return "bg-yellow-500/20 text-yellow-400";
-    case "error_llm_websocket_open":
-      return "bg-red-500/20 text-red-400";
-    case "error_llm_websocket_lost_connection":
-      return "bg-red-500/20 text-red-400";
-    case "error_llm_websocket_runtime":
-      return "bg-red-500/20 text-red-400";
-    case "error_llm_websocket_corrupt_payload":
-      return "bg-red-500/20 text-red-400";
-    case "error_no_audio_received":
-      return "bg-red-500/20 text-red-400";
-    case "error_asr":
-      return "bg-red-500/20 text-red-400";
-    case "error_retell":
-      return "bg-red-500/20 text-red-400";
-    case "error_unknown":
-      return "bg-red-500/20 text-red-400";
-    case "error_user_not_joined":
-      return "bg-red-500/20 text-red-400";
-    case "registered_call_timeout":
-      return "bg-yellow-500/20 text-yellow-400";
-    default:
-      return "bg-neutral-500/20 text-neutral-400";
-  }
-};
+//   switch (reason) {
+//     case "agent_hangup":
+//       return "bg-green-500/20 text-green-400";
+//     case "user_hangup":
+//       return "bg-blue-500/20 text-blue-400";
+//     case "call_failed":
+//       return "bg-red-500/20 text-red-400";
+//     case "no_answer":
+//       return "bg-yellow-500/20 text-yellow-400";
+//     case "call_transfer":
+//       return "bg-purple-500/20 text-purple-400";
+//     case "voicemail_reached":
+//       return "bg-orange-500/20 text-orange-400";
+//     case "inactivity":
+//       return "bg-yellow-500/20 text-yellow-400";
+//     case "max_duration_reached":
+//       return "bg-red-500/20 text-red-400";
+//     case "concurrency_limit_reached":
+//       return "bg-red-500/20 text-red-400";
+//     case "no_valid_payment":
+//       return "bg-red-500/20 text-red-400";
+//     case "scam_detected":
+//       return "bg-red-500/20 text-red-400";
+//     case "dial_busy":
+//       return "bg-yellow-500/20 text-yellow-400";
+//     case "dial_failed":
+//       return "bg-red-500/20 text-red-400";
+//     case "dial_no_answer":
+//       return "bg-yellow-500/20 text-yellow-400";
+//     case "invalid_destination":
+//       return "bg-red-500/20 text-red-400";
+//     case "telephony_provider_permission_denied":
+//       return "bg-red-500/20 text-red-400";
+//     case "telephony_provider_unavailable":
+//       return "bg-red-500/20 text-red-400";
+//     case "sip_routing_error":
+//       return "bg-red-500/20 text-red-400";
+//     case "marked_as_spam":
+//       return "bg-red-500/20 text-red-400";
+//     case "user_declined":
+//       return "bg-yellow-500/20 text-yellow-400";
+//     case "error_llm_websocket_open":
+//       return "bg-red-500/20 text-red-400";
+//     case "error_llm_websocket_lost_connection":
+//       return "bg-red-500/20 text-red-400";
+//     case "error_llm_websocket_runtime":
+//       return "bg-red-500/20 text-red-400";
+//     case "error_llm_websocket_corrupt_payload":
+//       return "bg-red-500/20 text-red-400";
+//     case "error_no_audio_received":
+//       return "bg-red-500/20 text-red-400";
+//     case "error_asr":
+//       return "bg-red-500/20 text-red-400";
+//     case "error_retell":
+//       return "bg-red-500/20 text-red-400";
+//     case "error_unknown":
+//       return "bg-red-500/20 text-red-400";
+//     case "error_user_not_joined":
+//       return "bg-red-500/20 text-red-400";
+//     case "registered_call_timeout":
+//       return "bg-yellow-500/20 text-yellow-400";
+//     default:
+//       return "bg-neutral-500/20 text-neutral-400";
+//   }
+// };
 
 export const CallsTable = ({ calls, callType }: CallsTableProps) => {
   if (calls.length === 0) {
@@ -158,9 +158,7 @@ export const CallsTable = ({ calls, callType }: CallsTableProps) => {
             />
           </svg>
         </div>
-        <h3 className="text-lg font-medium text-white mb-2">
-          No calls found
-        </h3>
+        <h3 className="text-lg font-medium text-white mb-2">No calls found</h3>
         <p className="text-neutral-400">
           No {callType} calls match your current filters
         </p>
@@ -174,6 +172,9 @@ export const CallsTable = ({ calls, callType }: CallsTableProps) => {
         <thead>
           <tr className="border-b border-neutral-800">
             <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
+              Date
+            </th>
+            <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
               Caller Name
             </th>
             <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
@@ -182,14 +183,11 @@ export const CallsTable = ({ calls, callType }: CallsTableProps) => {
             <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
               Status
             </th>
-            <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
+            {/* <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
               Disconnection Reason
-            </th>
+            </th> */}
             <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
               Duration
-            </th>
-            <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
-              Date
             </th>
             <th className="text-center py-3 px-4 text-sm font-semibold text-neutral-300">
               Actions
@@ -203,14 +201,17 @@ export const CallsTable = ({ calls, callType }: CallsTableProps) => {
               className="border-b border-neutral-800/50 hover:bg-neutral-800/30 transition-colors"
             >
               <td className="py-4 px-4">
+                <span className="text-neutral-400 text-sm">
+                  {formatDate(call.start_timestamp)}
+                </span>
+              </td>
+              <td className="py-4 px-4">
                 <span className="text-white font-medium">
                   {getCallerName(call)}
                 </span>
               </td>
               <td className="py-4 px-4">
-                <span className="text-neutral-300">
-                  {getPhoneNumber(call)}
-                </span>
+                <span className="text-neutral-300">{getPhoneNumber(call)}</span>
               </td>
               <td className="py-4 px-4">
                 <span
@@ -221,7 +222,7 @@ export const CallsTable = ({ calls, callType }: CallsTableProps) => {
                   {call.call_status}
                 </span>
               </td>
-              <td className="py-4 px-4">
+              {/* <td className="py-4 px-4">
                 <span
                   className={`inline-flex px-2 py-1 text-xs rounded-full font-medium ${getDisconnectionReasonColor(
                     call.disconnection_reason
@@ -229,17 +230,13 @@ export const CallsTable = ({ calls, callType }: CallsTableProps) => {
                 >
                   {formatDisconnectionReason(call.disconnection_reason)}
                 </span>
-              </td>
+              </td> */}
               <td className="py-4 px-4">
                 <span className="text-neutral-300">
                   {formatDuration(call.duration_ms)}
                 </span>
               </td>
-              <td className="py-4 px-4">
-                <span className="text-neutral-400 text-sm">
-                  {formatDate(call.start_timestamp)}
-                </span>
-              </td>
+
               <td className="py-4 px-4">
                 <RecordingActions call={call} />
               </td>

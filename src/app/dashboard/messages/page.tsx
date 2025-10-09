@@ -25,6 +25,9 @@ const SkeletonTable = () => (
       <thead>
         <tr className="border-b border-neutral-800">
           <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
+            Date
+          </th>
+          <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
             Caller
           </th>
           <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
@@ -32,9 +35,6 @@ const SkeletonTable = () => (
           </th>
           <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
             Message
-          </th>
-          <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
-            Date
           </th>
           <th className="text-center py-3 px-4 text-sm font-semibold text-neutral-300">
             Actions
@@ -145,6 +145,22 @@ export default function MessagesPage() {
     return message.substring(0, maxLength) + "...";
   };
 
+  const formatPhoneNumber = (phone: string) => {
+    // Remove all non-numeric characters
+    const cleaned = phone.replace(/\D/g, "");
+
+    // Get the last 10 digits (in case there's a country code)
+    const last10 = cleaned.slice(-10);
+
+    // Format as (XXX) XXX-XXXX
+    if (last10.length === 10) {
+      return `(${last10.slice(0, 3)}) ${last10.slice(3, 6)}-${last10.slice(6)}`;
+    }
+
+    // Return original if not 10 digits
+    return phone;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -222,6 +238,9 @@ export default function MessagesPage() {
                 <thead>
                   <tr className="border-b border-neutral-800">
                     <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
+                      Date
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
                       Caller
                     </th>
                     <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
@@ -229,9 +248,6 @@ export default function MessagesPage() {
                     </th>
                     <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
                       Message
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
-                      Date
                     </th>
                     <th className="text-center py-3 px-4 text-sm font-semibold text-neutral-300">
                       Actions
@@ -244,6 +260,11 @@ export default function MessagesPage() {
                       key={message.id}
                       className="border-b border-neutral-800/50 hover:bg-neutral-800/30 transition-colors"
                     >
+                      <td className="py-4 px-4">
+                        <span className="text-neutral-400 text-sm">
+                          {formatDate(message.date_time)}
+                        </span>
+                      </td>
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 bg-sky-500 rounded-full flex items-center justify-center">
@@ -258,18 +279,13 @@ export default function MessagesPage() {
                       </td>
                       <td className="py-4 px-4">
                         <span className="text-neutral-300">
-                          {message.caller_phone}
+                          {formatPhoneNumber(message.caller_phone)}
                         </span>
                       </td>
                       <td className="py-4 px-4">
                         <p className="text-neutral-300 max-w-xs">
                           {truncateMessage(message.message_content)}
                         </p>
-                      </td>
-                      <td className="py-4 px-4">
-                        <span className="text-neutral-400 text-sm">
-                          {formatDate(message.date_time)}
-                        </span>
                       </td>
                       <td className="py-4 px-4">
                         <Button
@@ -384,14 +400,6 @@ export default function MessagesPage() {
                         minute: "2-digit",
                       }
                     )}
-                  </p>
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-neutral-300 mb-2">
-                    Message ID
-                  </h4>
-                  <p className="text-neutral-400 font-mono text-sm">
-                    {selectedMessage.id}
                   </p>
                 </div>
               </div>

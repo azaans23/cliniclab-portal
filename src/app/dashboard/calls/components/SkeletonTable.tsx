@@ -4,6 +4,9 @@ export const SkeletonTable = () => (
       <thead>
         <tr className="border-b border-neutral-800">
           <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
+            Date
+          </th>
+          <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
             Caller Name
           </th>
           <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
@@ -12,14 +15,11 @@ export const SkeletonTable = () => (
           <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
             Status
           </th>
-          <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
+          {/* <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
             Disconnection Reason
-          </th>
+          </th> */}
           <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
             Duration
-          </th>
-          <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
-            Date
           </th>
           <th className="text-center py-3 px-4 text-sm font-semibold text-neutral-300">
             Actions

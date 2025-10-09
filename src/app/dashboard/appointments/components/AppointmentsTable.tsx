@@ -38,8 +38,9 @@ const formatDateTime = (dateTimeString: string) => {
 const getStatusColor = (status: string) => {
   switch (status.toLowerCase()) {
     case "confirmed":
-    case "booked":
       return "text-green-400";
+    case "booked":
+      return "text-sky-500";
     case "pending":
       return "text-yellow-400";
     case "cancelled":
@@ -96,9 +97,6 @@ export const AppointmentsTable = ({
               Start Time
             </th>
             <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
-              End Time
-            </th>
-            <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
               Status
             </th>
           </tr>
@@ -137,17 +135,10 @@ export const AppointmentsTable = ({
                 </span>
               </td>
               <td className="py-4 px-4">
-                <span className="text-neutral-300">
-                  {formatDateTime(appointment.endTime)}
-                </span>
-              </td>
-              <td className="py-4 px-4">
                 <span
-                  className={`text-xs font-medium ${getStatusColor(
-                    appointment.appoinmentStatus
-                  )}`}
+                  className={`text-xs font-medium ${getStatusColor("booked")}`}
                 >
-                  {appointment.appoinmentStatus}
+                  booked
                 </span>
               </td>
             </tr>

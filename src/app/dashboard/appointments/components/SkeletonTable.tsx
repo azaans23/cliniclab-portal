@@ -15,9 +15,6 @@ export const SkeletonTable = () => (
             Start Time
           </th>
           <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
-            End Time
-          </th>
-          <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">
             Status
           </th>
         </tr>

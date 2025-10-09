@@ -177,8 +177,9 @@ const formatAppointmentDateTime = (dateTimeString: string) => {
 const getAppointmentStatusColor = (status: string) => {
   switch (status.toLowerCase()) {
     case "confirmed":
-    case "booked":
       return "text-green-400";
+    case "booked":
+      return "text-sky-500";
     case "pending":
       return "text-yellow-400";
     case "cancelled":
