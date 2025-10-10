@@ -91,7 +91,7 @@ export default function Home() {
         <Card className="shadow-2xl border-0 bg-neutral-900/80 backdrop-blur-xl border-neutral-800/50">
           <CardHeader className="space-y-2 pb-6">
             <CardTitle className="text-2xl font-semibold text-center text-white tracking-tight">
-              Welcome back
+              Welcome
             </CardTitle>
             <CardDescription className="text-center text-neutral-400 text-sm font-normal">
               Enter your credentials to access your account
@@ -192,7 +192,7 @@ export default function Home() {
         {/* Footer */}
         <div className="mt-8 text-center">
           <p className="text-xs text-neutral-500 font-normal tracking-wide">
-            © 2024 ClinicLab Portal. All rights reserved.
+            © 2025 ClinicLab Portal. All rights reserved.
           </p>
         </div>
       </div>
