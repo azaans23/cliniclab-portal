@@ -153,10 +153,11 @@ export default function AppointmentsPage() {
         endDate = new Date(filters.endDate);
         endDate.setHours(23, 59, 59, 999);
       } else {
-        // Set to current time if no end date
+        // Set to 1 year in the future if no end date
         endDate = new Date();
+        endDate.setFullYear(endDate.getFullYear() + 1);
+        endDate.setHours(23, 59, 59, 999);
       }
-
       let allAppointments: GHLAppointment[] = [];
 
       if (filters.appointmentType === "all") {
